@@ -1,8 +1,10 @@
-"""End-to-end tests: the client against the live API, with the token built into the SDK.
+"""End-to-end tests: Client against the live API, with the token built into the SDK.
 
     pytest e2e
 
-They make about ten requests, and test the installed package.
+The files of this directory make about thirty requests together, and test the
+installed package: this one Client, test_live_async.py AsyncClient, and
+test_examples.py the programs in examples/.
 """
 
 from __future__ import annotations

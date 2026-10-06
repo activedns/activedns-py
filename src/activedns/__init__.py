@@ -22,6 +22,9 @@ A query is one of::
     192.0.2.0/24     names that resolve into a network
     AS64496          names that resolve into an AS
 
+``AsyncClient`` is the same client for asyncio: ``async with`` and ``await
+client.query(...)``.
+
 Requests are authenticated with a token. The SDK has one built in, shared by
 all its users, so no account is needed. It allows domain, wildcard, address
 and network queries, small pages and the first records of a result. A token
@@ -30,7 +33,9 @@ queries, wider networks, larger pages, deeper paging and a higher rate limit.
 Request one at https://activedns.net/contact/.
 """
 
-from ._client import DEFAULT_BASE_URL, Client
+from ._async_client import AsyncClient
+from ._base import DEFAULT_BASE_URL
+from ._client import Client
 from ._errors import (
     ActiveDNSError,
     APIError,
@@ -47,6 +52,7 @@ __all__ = [
     "APIError",
     "ActiveDNSError",
     "Alias",
+    "AsyncClient",
     "Client",
     "ForbiddenError",
     "Page",

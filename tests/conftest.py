@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
@@ -8,7 +9,7 @@ from typing import Any
 import httpx
 import pytest
 
-from activedns import Client
+from activedns import AsyncClient, Client
 
 PAGE = {
     "records": [
@@ -77,6 +78,39 @@ class Harness:
     def _sleep(self, seconds: float) -> None:
         self.sleeps.append(seconds)
         self.advance(seconds)
+
+    def advance(self, seconds: float) -> None:
+        self.clock += timedelta(seconds=seconds)
+
+    @property
+    def hits(self) -> int:
+        return len(self.requests)
+
+
+class AsyncHarness:
+    """Harness for the asyncio client. Its sleeps move the clock and yield to other tasks."""
+
+    def __init__(self, handler: Handler, **options: Any) -> None:
+        self.requests: list[httpx.Request] = []
+        self.sleeps: list[float] = []
+        self.clock = datetime(2026, 10, 5, 12, 0, 0, tzinfo=timezone.utc)
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            self.requests.append(request)
+            return handler(request)
+
+        options.setdefault("token", "test-token")
+        self.client = AsyncClient(
+            "mytool/1.2", http_client=httpx.AsyncClient(transport=httpx.MockTransport(handle)), **options
+        )
+        self.client._now = lambda: self.clock
+        self.client._jitter = lambda: 0.0
+        self.client._sleep = self._sleep
+
+    async def _sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.advance(seconds)
+        await asyncio.sleep(0)
 
     def advance(self, seconds: float) -> None:
         self.clock += timedelta(seconds=seconds)

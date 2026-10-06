@@ -53,6 +53,32 @@ while page is not None:
 `next_page` repeats the query from where the page ended, and returns `None` after the last page. Past the depth
 your token may page to, it raises `ForbiddenError`.
 
+## Async
+
+`AsyncClient` is the same client for asyncio, on `httpx.AsyncClient`. It takes the same arguments, has the same
+methods, to be awaited, and raises the same errors:
+
+```python
+import asyncio
+from activedns import AsyncClient
+
+
+async def main():
+    async with AsyncClient("mytool/1.0") as client:
+        com, net = await asyncio.gather(
+            client.query("*.example.com"),
+            client.query("*.example.net"),
+        )
+        more = await client.next_page(com)
+
+
+asyncio.run(main())
+```
+
+Tasks that share a client share its pacing: it sends one request at a time unless `max_concurrent` says
+otherwise, and when the API tells one task to slow down, all of them wait. See [A fair client](#a-fair-client).
+Without `async with`, close the client with `await client.aclose()`.
+
 ## Your own token
 
 The SDK works the moment you install it, because it carries a token of its own. That token is shared by
@@ -177,17 +203,29 @@ told apart from the rest, and its author asked about it instead of everyone bein
 
 ## Examples
 
-Three small programs in `examples/`, each one file that runs as it is:
+Five small programs in `examples/`, each one file that runs as it is. The ones named `async_…` use
+`AsyncClient`; the others use `Client`:
+
+| example | client | what it shows |
+|---|---|---|
+| `query.py` | `Client` | one search: the records of a page, the count, the rate limit |
+| `subdomains.py` | `Client` | paging with `next_page`, and stopping at a rate limit or the token's depth |
+| `combined.py` | `Client` | `query_combined`, and the refusal when the token does not allow a search |
+| `async_query.py` | `AsyncClient` | `query.py` with asyncio: the same search, awaited |
+| `async_domains.py` | `AsyncClient` | several searches at once, as tasks that share one client |
 
 ```
-python examples/query.py example.com                 one page of a search, and the rate limit
+python examples/query.py example.com
 python examples/query.py --limit 10 192.0.2.0/24
-python examples/subdomains.py --pages 5 example.com  names under a domain, paging with next_page
+python examples/subdomains.py --pages 5 example.com
 python examples/combined.py --domain '*.example.com' --asn 64496
+python examples/async_query.py example.com
+python examples/async_domains.py example.com example.org example.net
 ```
 
 They use the SDK's own token; set `ACTIVEDNS_TOKEN` to use yours. `combined.py` needs one, and shows the
-refusal without it; `query.py` with your own token also takes AS numbers (`AS64496`) and wider networks.
+refusal without it; `query.py` and `async_query.py` with your own token also take AS numbers (`AS64496`) and
+wider networks.
 
 ## Errors
 
@@ -218,9 +256,9 @@ The API is shared, so the client holds itself back without being asked:
 
 | situation | what the client does |
 |---|---|
-| several threads query at once | one request at a time (`max_concurrent` to change) |
+| several threads or tasks query at once | one request at a time (`max_concurrent` to change) |
 | 429, 502, 503, 504, connection failure | up to 4 retries (`max_retries`), waiting 1 s, 2 s, 4 s, 8 s … (at most 30 s) with jitter, and at least `Retry-After` |
-| told to slow down | every thread using the client waits, not only the one that was told |
+| told to slow down | every thread or task using the client waits, not only the one that was told |
 | asked to wait longer than 30 s (`max_wait`) | no sleeping: the call raises `RateLimitError` with `retry_at`, and later calls fail at once until then |
 | a response says no requests are left | the next request waits for the limit to reset instead of being sent and refused |
 | the token is refused (401) | nothing more is sent |
@@ -228,7 +266,7 @@ The API is shared, so the client holds itself back without being asked:
 | the server timed out on a search (`Page.timed_out`) | the page is returned as it is, not retried |
 | a result has more pages | nothing: further pages are fetched only when you call `next_page` |
 
-Share one `Client` across a program: these limits are kept per client. `client.rate_limits` holds the limits
+Share one `Client` (or `AsyncClient`) across a program: these limits are kept per client. `client.rate_limits` holds the limits
 the server reported with its latest response.
 
 ## Options
@@ -240,7 +278,7 @@ the server reported with its latest response.
 | `max_retries` | 4 |
 | `max_wait` | 30 seconds |
 | `timeout` | 60 seconds |
-| `http_client` | a new `httpx.Client` |
+| `http_client` | a new `httpx.Client` (`httpx.AsyncClient` for `AsyncClient`) |
 | `base_url` | `https://activedns.net` |
 
 Records, pages and rate limits are immutable [attrs](https://www.attrs.org) classes.
@@ -253,7 +291,8 @@ pytest                  unit tests, against a fake server
 ruff check .
 ruff format --check .
 mypy
-pytest e2e              about ten requests to the live API, with the SDK's own token
+pytest e2e              about thirty requests to the live API, with the SDK's own token:
+                        both clients, and every example
 ```
 
 The same checks run in GitHub Actions on every push and pull request (`.github/workflows/ci.yml`): lint and
